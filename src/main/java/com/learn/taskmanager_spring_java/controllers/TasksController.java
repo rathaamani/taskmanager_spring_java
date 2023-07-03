@@ -1,22 +1,33 @@
 package com.learn.taskmanager_spring_java.controllers;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.learn.taskmanager_spring_java.dto.CreateTaskDTO;
+import com.learn.taskmanager_spring_java.dto.ErrorResponseDTO;
+import com.learn.taskmanager_spring_java.dto.TaskResponseDTO;
+import com.learn.taskmanager_spring_java.dto.UpdateTaskDTO;
 import com.learn.taskmanager_spring_java.entities.TaskEnitity;
+import com.learn.taskmanager_spring_java.service.NotesService;
 import com.learn.taskmanager_spring_java.service.TaskService;
+import org.modelmapper.ModelMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.config.Task;
 import org.springframework.web.bind.annotation.*;
 
+import java.text.ParseException;
 import java.util.List;
 
 @RestController
 @RequestMapping("/tasks")
 public class TasksController {
     private final TaskService taskService;
-    public TasksController(TaskService taskService){
+    private final NotesService notesService;
+    private ModelMapper modelMapper = new ModelMapper();
+
+
+    public TasksController(TaskService taskService, NotesService notesService ){
         this.taskService = taskService;
+        this.notesService = notesService;
     }
+
     @GetMapping("")
     public ResponseEntity<List<TaskEnitity>> getTasks(){
         var tasks = taskService.getTasks();
@@ -24,17 +35,35 @@ public class TasksController {
         return  ResponseEntity.ok(tasks);
     }
     @GetMapping("/{id}")
-    public ResponseEntity<TaskEnitity> getTaskById(@PathVariable("id") Integer id){
+    public ResponseEntity<TaskResponseDTO> getTaskById(@PathVariable("id") Integer id){
         var task= taskService.getTaskById(id);
+        var notes = notesService.getNotesForTask(id);
         if (task == null) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(task);
+        var taskResponse = modelMapper.map(task, TaskResponseDTO.class);
+        taskResponse.setNotes(notes);
+        return ResponseEntity.ok(taskResponse);
     }
     @PostMapping("")
-    public ResponseEntity<TaskEnitity> addTask(@RequestBody CreateTaskDTO body){
+    public ResponseEntity<TaskEnitity> addTask(@RequestBody CreateTaskDTO body) throws ParseException {
         var task = taskService.addTask(body.getTitle(), body.getDescription(), body.getDeadline());
-
         return ResponseEntity.ok(task);
+    }
+    @PatchMapping("/{id}")
+    public ResponseEntity<TaskEnitity> updateTask(@PathVariable("id") Integer id, @RequestBody UpdateTaskDTO body) throws ParseException{
+        var task = taskService.updateTask(id, body.getDescription(), body.getDeadline(), body.getCompleted());
+        if(task == null){
+            return ResponseEntity.notFound().build();
+        }
+            return ResponseEntity.ok(task);
+    }
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponseDTO> handleErrors(Exception e){
+        if(e instanceof  ParseException){
+            return ResponseEntity.badRequest().body(new ErrorResponseDTO("Invalid date format"));
+        }
+        e.printStackTrace();
+        return ResponseEntity.internalServerError().body(new ErrorResponseDTO("Internal Server Error"));
     }
 }
